@@ -1,7 +1,7 @@
-import type { ProxyOptions } from './types';
+import assert from 'assert';
 import type { Express } from '../compiled/express';
 import { createProxyMiddleware } from '../compiled/http-proxy-middleware';
-import assert from 'assert';
+import type { ProxyOptions } from './types';
 
 export function createProxy(
   proxy: { [key: string]: ProxyOptions } | ProxyOptions[],
@@ -31,6 +31,14 @@ export function createProxy(
       middleware = createProxyMiddleware(proxy.context, {
         ...proxy,
         onProxyReq(proxyReq, req: any, res) {
+          // TODO: remove this once https://github.com/http-party/node-http-proxy/issues/1520 issue was fixed.
+          // workaround for solving request canceling not trigger `close` event on server side. (may cause memory leak)
+          res.on('close', () => {
+            const aborted = !res.writableFinished;
+            if (aborted) {
+              proxyReq.destroy();
+            }
+          });
           // add origin in request header
           if (proxyReq.getHeader('origin')) {
             proxyReq.setHeader('origin', new URL(proxy.target!)?.href || '');
